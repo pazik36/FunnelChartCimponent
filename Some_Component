@@ -1,0 +1,175 @@
+<aura:component implements="flexipage:availableForAllPageTypes" access="global" controller="CustomPersonalReportsController">
+   <ltng:require scripts="{!join(',',$Resource.HighCharts,$Resource.funnel 
+                                            )}" afterScriptsLoaded="{!c.doInit}"/>
+
+    <aura:attribute name="accountData" type="List"/>
+    <aura:attribute name="totalRecords" type="Integer" />
+    <aura:attribute name="totalAnnualRevenue" type="Integer" />
+    <aura:attribute name="showSpinner" type="Boolean" default="true" />
+    <aura:attribute name="prevSortField" type="String" />
+    <aura:attribute name="fields" type="String" required="true" default="Id,Name,BillingState,Website,LastActivityDate,Phone,Follow_up_status__c,AnnualRevenue,Hot_Lead__c"/>
+    <aura:attribute name="groupBy" type="String" required="true" default="Follow_up_status__c"/>
+    <aura:attribute name="sortBy" type="String"/>
+    <aura:attribute name="sortDirection" type="String"/>
+    <aura:attribute name="sortByStatic" type="String" required="true" default="Follow_up_status__c ASC"/>
+    <aura:attribute name="filters" type="String" required="true" default="Type = 'Script Account' AND Script_Caller_status__c = 'Decision Maker Reached'"/>
+    <aura:attribute name="modalBody" type="Aura.Component" />
+    <aura:attribute name="refreshReports" type="Boolean" default="false" />
+    
+    <aura:handler name="init" value="{!this}" action="{!c.doInit}"/>
+    
+    <aura:method name="refresh" action="{!c.doInit}" description="refresh reports" />
+    
+    <aura:registerEvent name="refreshReport" type="c:GenericConfirmationRefreshDataEvent" />
+
+    <lightning:overlayLibrary aura:id="overlayLib"/>
+    <lightning:notificationsLibrary aura:id="notifLib"/>
+
+    <aura:if isTrue="{!v.showSpinner}">
+        <lightning:spinner class="slds-is-fixed" alternativeText="Loading"/>
+    </aura:if>
+
+    <div id="container" name="container" style="height: 400px; width:750px"></div>
+    
+    <lightning:layout multipleRows="true" class="slds-p-left_small">
+        <lightning:layoutItem size="1">
+            <label class="slds-form-element__label">Total Records</label>
+            <div class="totalValue">{!v.totalRecords}</div>
+        </lightning:layoutItem>
+        <lightning:layoutItem size="2">
+            <label class="slds-form-element__label" >Total Annual Revenue</label>
+            <div><lightning:formattedNumber maximumFractionDigits="0" minimumFractionDigits="0" class="totalValue" value="{!v.totalAnnualRevenue}" style="currency" currencyCode="USD"/></div>
+        </lightning:layoutItem>
+    </lightning:layout>
+
+    <div>
+        <table class="slds-table slds-table_cell-buffer slds-table_bordered slds-table_col-bordered slds-border_right" style="width:80%" role="grid">
+            <thead>
+                <tr class="slds-line-height--reset" >
+                    <th class="slds-text-title-small" scope="col">
+                        <div class="slds-truncate" data-div="Follow_up_status__c">
+                            Follow up status
+                        </div>
+                    </th>
+                    <th class="slds-text-title--small" scope="col">
+                        <div class="slds-truncate slds-text-link_reset" data-div="Name" onclick="{!c.updateColumnSorting}">
+                            Account Name
+                            <lightning:icon aura:id="Name__SortIcon" iconName="utility:arrowup" size="xx-small" class="slds-hidden"/>
+                        </div>
+                    </th>
+                    <th class="slds-text-title--small" scope="col">
+                        <div class="slds-truncate slds-text-link_reset" data-div="LastActivityDate" onclick="{!c.updateColumnSorting}">
+                            Last Activity
+                            <lightning:icon aura:id="LastActivityDate__SortIcon" iconName="utility:arrowup" size="xx-small" class="slds-hidden"/>
+                        </div>
+                    </th>
+                    <th class="slds-text-title--small" scope="col">
+                        <div class="slds-truncate slds-text-link_reset" data-div="Phone" onclick="{!c.updateColumnSorting}">
+                            Phone
+                            <lightning:icon aura:id="Phone__SortIcon" iconName="utility:arrowup" size="xx-small" class="slds-hidden"/>
+                        </div>
+                    </th>
+                    <th class="slds-text-title--small" scope="col">
+                        <div class="slds-truncate slds-text-link_reset" data-div="BillingState" onclick="{!c.updateColumnSorting}">
+                            State
+                            <lightning:icon aura:id="BillingState__SortIcon" iconName="utility:arrowup" size="xx-small" class="slds-hidden"/>
+                        </div>
+                    </th>
+                    <th class="slds-text-title--small" scope="col">
+                        <div class="slds-truncate slds-text-link_reset" data-div="Website" onclick="{!c.updateColumnSorting}">
+                            Website
+                            <lightning:icon aura:id="Website__SortIcon" iconName="utility:arrowup" size="xx-small" class="slds-hidden"/>
+                        </div>
+                    </th>
+                    <th class="slds-text-title--small" scope="col">
+                        <div class="slds-truncate slds-text-link_reset" data-div="AnnualRevenue" onclick="{!c.updateColumnSorting}">
+                            Annual Revenue
+                            <lightning:icon aura:id="AnnualRevenue__SortIcon" iconName="utility:arrowup" size="xx-small" class="slds-hidden"/>
+                        </div>
+                    </th>
+                    <th class="slds-text-title--small" scope="col">
+                        <div class="slds-truncate slds-text-link_reset" data-div="Hot_Lead__c" onclick="{!c.updateColumnSorting}">
+                            Hot Lead
+                            <lightning:icon aura:id="Hot_Lead__SortIcon" iconName="utility:arrowup" size="xx-small" class="slds-hidden"/>
+                        </div>
+                    </th>
+                    <th class="slds-text-title--small" scope="col">
+                        <div class="slds-truncate" >
+                            Action
+                        </div>
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                <aura:iteration items="{!v.accountData}" var="item" indexVar="key">
+                    <tr>
+                        <td rowspan="{!item.value.length + 1}" class="slds-align-top">
+                            {! if(item.key == 'null', '', item.key) + ' (' + item.value.length + ')'}
+                        </td>
+                    </tr>
+                    <aura:iteration items="{!item.value}" var="itemAcc">
+                        <tr>
+                            <td>
+                                <div class="slds-truncate">
+                                    <a href="{!'/lightning/r/Account/' + itemAcc.Id + '/view'}" target="_blank">{!itemAcc.Name}</a>
+                                </div>
+                            </td>
+                            <td class="slds-align-right">
+                                <div class="slds-truncate">
+                                    <aura:if isTrue="{!not(empty(itemAcc.LastActivityDate))}">
+                                        <lightning:formattedDateTime value="{!itemAcc.LastActivityDate}" month="2-digit" day="2-digit" year="numeric"/>
+                                    </aura:if>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="slds-truncate">
+                                    <aura:if isTrue="{!not(empty(itemAcc.Phone))}">
+                                        <lightning:icon iconName="utility:call" alternativeText="phone: " size="x-small"/>
+                                        {!' ' + itemAcc.Phone}
+                                    </aura:if>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="slds-truncate">
+                                    {!itemAcc.BillingState}
+                                </div>
+                            </td>
+                            <td>
+                                <div class="slds-truncate">
+                                    {!itemAcc.Website}
+                                </div>
+                            </td>
+                            <td class="slds-align-right">
+                                <div class="slds-truncate">
+                                    <aura:if isTrue="{!not(empty(itemAcc.AnnualRevenue))}">
+                                        <lightning:formattedNumber value="{!itemAcc.AnnualRevenue}" style="currency" maximumFractionDigits="0" minimumFractionDigits="0"/>
+                                    </aura:if>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="slds-truncate slds-align_absolute-center">
+                                    <ui:outputCheckbox  value="{!itemAcc.Hot_Lead__c}"/>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="slds-truncate slds-align_absolute-center">
+                                    <lightning:button iconName="utility:edit" label="Quick Edit" name="{!itemAcc.Id}" onclick="{! c.handleRowAction }" />
+                                </div>
+                            </td>
+                        </tr>
+                    </aura:iteration>
+                    <tr class="slds-theme_shade">
+                        <th class="slds-text-title--small">
+                            <div class="slds-truncate"><b>Subtotal</b></div>
+                        </th>
+                        <td colspan="5"></td>
+                        <td class="slds-align-right">
+                            <b><lightning:formattedNumber value="{!item.subtotal}" style="currency" maximumFractionDigits="0" minimumFractionDigits="0"/></b>
+                        </td>
+                        <td colspan="2"></td>
+                    </tr>
+                </aura:iteration>
+            </tbody>
+        </table>
+    </div>
+</aura:component>
